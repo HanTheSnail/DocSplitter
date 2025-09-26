@@ -22,38 +22,60 @@ def extract_tables_from_docx(uploaded_file):
         # Create a new document for each table
         new_doc = Document()
         
-        # Copy the table to the new document
-        # We need to recreate the table structure
+        # Copy the table to the new document with proper formatting preservation
         new_table = new_doc.add_table(rows=len(table.rows), cols=len(table.columns))
-        new_table.style = table.style
         
-        # Copy each cell's content and formatting
+        # Copy table style if it exists
+        if table.style:
+            new_table.style = table.style
+        
+        # Copy each cell's content and formatting exactly
         for row_idx, row in enumerate(table.rows):
             for col_idx, cell in enumerate(row.cells):
                 new_cell = new_table.cell(row_idx, col_idx)
                 
-                # Copy cell content
-                new_cell.text = cell.text
+                # Clear the default paragraph in the new cell
+                new_cell._element.clear_content()
                 
-                # Try to preserve basic formatting
-                if cell.paragraphs:
-                    for para_idx, paragraph in enumerate(cell.paragraphs):
-                        if para_idx == 0:
-                            # Use the existing paragraph in new cell
-                            new_para = new_cell.paragraphs[0]
-                        else:
-                            # Add additional paragraphs
-                            new_para = new_cell.add_paragraph()
+                # Copy all paragraphs from original cell
+                for paragraph in cell.paragraphs:
+                    # Create new paragraph in the target cell
+                    new_para = new_cell.add_paragraph()
+                    
+                    # Copy paragraph formatting
+                    new_para.alignment = paragraph.alignment
+                    new_para.style = paragraph.style
+                    
+                    # Copy all runs with their formatting
+                    for run in paragraph.runs:
+                        new_run = new_para.add_run(run.text)
                         
-                        new_para.text = paragraph.text
+                        # Copy all run formatting
+                        new_run.bold = run.bold
+                        new_run.italic = run.italic
+                        new_run.underline = run.underline
+                        new_run.font.size = run.font.size
+                        new_run.font.name = run.font.name
+                        new_run.font.color.rgb = run.font.color.rgb
                         
-                        # Copy basic formatting
-                        for run in paragraph.runs:
-                            new_run = new_para.add_run()
-                            new_run.text = run.text
-                            new_run.bold = run.bold
-                            new_run.italic = run.italic
-                            new_run.underline = run.underline
+                        # Copy highlighting/background color if present
+                        if run.font.highlight_color:
+                            new_run.font.highlight_color = run.font.highlight_color
+                
+                # Copy cell formatting
+                if hasattr(cell, '_element'):
+                    # Copy cell borders, shading, etc.
+                    new_cell._element.get_or_add_tcPr()
+                    if cell._element.tcPr is not None:
+                        # This preserves cell-level formatting
+                        for child in cell._element.tcPr:
+                            new_cell._element.tcPr.append(child)
+        
+        # Copy table-level formatting
+        if hasattr(table._element, 'tblPr') and table._element.tblPr is not None:
+            new_table._element.tblPr.clear()
+            for child in table._element.tblPr:
+                new_table._element.tblPr.append(child)
         
         # Save to memory
         doc_buffer = io.BytesIO()
@@ -201,6 +223,9 @@ def main():
         **Note**: Each table from your original document will become a separate Word document,
         preserving the original table structure and basic formatting.
         """)
+
+if __name__ == "__main__":
+    main()
 
 if __name__ == "__main__":
     main()
